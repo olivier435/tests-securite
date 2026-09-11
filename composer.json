@@ -37,6 +37,7 @@
         "symfony/stimulus-bundle": "^3.4",
         "symfony/string": "8.1.*",
         "symfony/translation": "8.1.*",
+        "symfony/twig-bridge": "8.1.*",
         "symfony/twig-bundle": "8.1.*",
         "symfony/ux-turbo": "^3.4",
         "symfony/validator": "8.1.*",

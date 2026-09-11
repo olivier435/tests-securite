@@ -10,27 +10,23 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('security-regression')]
 class SecurityRegressionTest extends WebTestCase
 {
-    //un visisteur anonym allez a l'espace admin
     /**
-     * un visisteur anonyme ne doit pas pouvoir accedere a l espace administration
-     *
-     * @return void
+     * Un visiteur anonyme ne doit jamais pouvoir accéder
+     * à l'espace d'administration
      */
     public function testAdminAreaStillRequiresAuthentication(): void
     {
         $client = static::createClient();
-        $crawler = $client->request('GET', '/admin');
+
+        $client->request('GET', '/admin');
 
         self::assertResponseRedirects('/login');
     }
 
-
     /**
-     * un visisteur authentifie sans role admin doit toujours 
-     * recevoir une reponse 403
-     *
+     * Un utilisateur authentifié sans ROLE_ADMIN
+     * doit toujours recevoir une réponse 403.
      */
-
     public function testStandardUserStillCannotAccessAdminArea(): void
     {
         $client = static::createClient();
@@ -42,17 +38,15 @@ class SecurityRegressionTest extends WebTestCase
         self::assertNotNull($user);
 
         $client->loginUser($user);
-
         $client->request('GET', '/admin');
 
         self::assertResponseStatusCodeSame(403);
     }
-    /**
-     * la protection ne doit pas bloquer les uilisateur
-     * qui dispoent rellement du rol adminsitrateur
-     *
-     */
 
+    /**
+     * La protection ne doit pas bloquer les utilisateurs
+     * qui disposent réellement du rôle administrateur.
+     */
     public function testAdministratorCanStillAccessAdminArea(): void
     {
         $client = static::createClient();
@@ -64,83 +58,79 @@ class SecurityRegressionTest extends WebTestCase
         self::assertNotNull($admin);
 
         $client->loginUser($admin);
-
         $client->request('GET', '/admin');
 
-        self::assertResponseIsSuccessful(200);
-        self::assertAnySelectorTextContains('h1', 'Administration');
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h1', 'Administration');
     }
 
     /**
-     * le proprietaire d'une commande doit toujours
-     * pouvoir consulter son propre ressource
+     * Le propriétaire d'une commande doit toujours
+     * pouvoir consulter sa propre ressource
      */
-
-    public function testOrderOwnerCanStillAsccessOwnOrder(): void
-    { {
-            $client = static::createClient();
-            //pourpouvoir allez sur la page commentaire chercher user pour etre connecte
-            $user = static::getContainer()->get(UserRepository::class)
-                ->findOneBy(['email' => 'user@test.fr']);
-            $order = static::getContainer()->get(PurchaseOrderRepository::class)
-                ->findOneBy(['reference' => 'SEC-001']);
-
-            self::assertNotNull($user);
-            self::assertNotNull($order);
-            self::assertSame(
-                $user->getId(),
-                $order->getOwner()?->getId()
-            );
-
-
-            $client->loginUser($user);
-            $client->request('GET', '/orders/' . $order->getId());
-
-            self::assertResponseIsSuccessful();
-            self::assertSelectorTextContains('h1', 'SEC-001');
-        }
-    }
-    /**
-     * test vote run utilisateurne doit jamais 
-     * pouvoir consulter la commande d'un autre utilisateur
-     */
-
-
-    public function testIdorProtectionIsStillApplied(): void
+    public function testOrderOwnerCanStillAccessOwnOrder(): void
     {
-        //static la classe de test herite de web test case accessible grace a l heritage deux methode static
         $client = static::createClient();
 
         $user = static::getContainer()
             ->get(UserRepository::class)
             ->findOneBy(['email' => 'user@test.fr']);
 
-        $foreignorder = static::getContainer()
+        $order = static::getContainer()
+            ->get(PurchaseOrderRepository::class)
+            ->findOneBy(['reference' => 'SEC-001']);
+
+        self::assertNotNull($user);
+        self::assertNotNull($order);
+        self::assertSame(
+            $user->getId(),
+            $order->getOwner()?->getId()
+        );
+
+        $client->loginUser($user);
+        $client->request('GET', '/orders/' . $order->getId());
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h1', 'SEC-001');
+    }
+
+    /**
+     * Un utilisateur ne doit jamais pouvoir consulter
+     * la commande d'un autre utilisateur
+     */
+    public function testIdorProtectionIsStillApplied(): void
+    {
+        $client = static::createClient();
+
+        $user = static::getContainer()
+            ->get(UserRepository::class)
+            ->findOneBy(['email' => 'user@test.fr']);
+
+        $foreignOrder = static::getContainer()
             ->get(PurchaseOrderRepository::class)
             ->findOneBy(['reference' => 'SEC-002']);
 
         self::assertNotNull($user);
-        self::assertNotNull($foreignorder);
+        self::assertNotNull($foreignOrder);
         self::assertNotSame(
             $user->getId(),
-            $foreignorder->getOwner()?->getId()
+            $foreignOrder->getOwner()?->getId()
         );
-        //404 permet d envoyer une indication au hack je ne sais pas si la ressource existe j envoie le message ne trouve pas je ne sais pas si cela existe 
-        //construction 403 il passe par defaut 
+
         $client->loginUser($user);
         $client->request(
             'GET',
-            '/orders/' . $foreignorder->getId()
+            '/orders/' . $foreignOrder->getId()
         );
 
-        self::assertResponseStatusCodeSame(403);
+        self::assertResponseStatusCodeSame(404);
     }
-    /**
-     * une tentative de suppression sans token CSRF 
-     * doit etre refusée sans suprimer le compte
-     */
 
-    public function testRejectedAccountDeletionDoesNotDeleteUSer(): void
+    /**
+     * Une tentative de suppression sans token CSRF
+     * doit être refusée sans supprimer le compte
+     */
+    public function testRejectedAccountDeletionDoesNotDeleteUser(): void
     {
         $client = static::createClient();
 
@@ -162,5 +152,71 @@ class SecurityRegressionTest extends WebTestCase
             ->findOneBy(['email' => $email]);
 
         self::assertNotNull($userAfterRequest);
+    }
+
+    public function testForeignAndMissingOrdersReturnTheSamePublicPage(): void
+    {
+        // Examiner la page publique, sans les détails du mode debug.
+        $client = static::createClient(['debug' => false]);
+
+        $userRepository = static::getContainer()
+            ->get(UserRepository::class);
+
+        $orderRepository = static::getContainer()
+            ->get(PurchaseOrderRepository::class);
+
+        $bob = $userRepository->findOneBy([
+            'email' => 'user@test.fr',
+        ]);
+
+        $foreignOrder = $orderRepository->findOneBy([
+            'reference' => 'SEC-002',
+        ]);
+
+        self::assertNotNull($bob);
+        self::assertNotNull($foreignOrder);
+        self::assertNotNull($foreignOrder->getOwner());
+
+        self::assertNotSame(
+            $bob->getId(),
+            $foreignOrder->getOwner()->getId()
+        );
+
+        // Choisir un identifiant absent du jeu de données de test.
+        $maximumId = $orderRepository->createQueryBuilder('o')
+            ->select('MAX(o.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        $missingId = (int) $maximumId + 1;
+
+        self::assertNull($orderRepository->find($missingId));
+
+        $client->loginUser($bob);
+
+        // Première demande : une commande existante appartient à autrui.
+        $client->request('GET', '/orders/' . $foreignOrder->getId());
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSelectorTextContains('h1', 'Page introuvable');
+
+        $foreignHtml = (string) $client->getResponse()->getContent();
+        $foreignContentType = $client->getResponse()
+            ->headers->get('Content-Type');
+
+        self::assertStringNotContainsString('SEC-002', $foreignHtml);
+
+        // Deuxième demande : une commande inexistante.
+        $client->request('GET', '/orders/' . $missingId);
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSelectorTextContains('h1', 'Page introuvable');
+
+        $missingHtml = (string) $client->getResponse()->getContent();
+        $missingContentType = $client->getResponse()
+            ->headers->get('Content-Type');
+
+        self::assertSame($foreignContentType, $missingContentType);
+        self::assertSame($foreignHtml, $missingHtml);
     }
 }
