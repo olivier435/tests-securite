@@ -3,34 +3,108 @@
 namespace App\Tests\Controller;
 
 use App\Repository\UserRepository;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 class LogoutControllerTest extends WebTestCase
 {
-    public function testUserCanLogout(): void
+    private const BASE_URL = 'https://127.0.0.1:8000';
+    public function testGetLogoutDoesNotDisconnectUser(): void
+    {
+        $client = $this->createAuthenticatedClient();
+        $client->request('GET', self::BASE_URL . '/logout');
+
+        self::assertResponseStatusCodeSame(405);
+
+        //une methode refusée ne doit pas déconnecter Bob.
+        $client->request('GET', self::BASE_URL . '/account');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('body', 'user@test.fr');
+    }
+
+    public function testRejectedlogoutKeepsUserAuthenticated(): void
+    {
+        $client = $this->createAuthenticatedClient();
+
+        $attempts = [
+            'jeton absent' => [],
+            'jeton falsifié' => [
+
+                '_token' => bin2hex(random_bytes(32)),
+            ],
+        ];
+        foreach ($attempts as $label => $parameters) {
+            $client->request(
+                'POST',
+                self::BASE_URL . '/logout',
+                $parameters
+            );
+            self::assertResponseStatusCodeSame(403, $label);
+
+            $client->request('GET', self::BASE_URL . '/account');
+            self::assertResponseIsSuccessful($label);
+            self::assertSelectorTextContains('body', 'user@test.fr');
+        }
+        //4 contrat valider le formulaire
+
+    }
+
+    public function testValidLogoutInvalidatesSession(): void
+    {
+        $client = $this->createAuthenticatedClient();
+
+        $form = $client->getCrawler()
+            ->filter('#logout-form')
+            ->form();
+
+        //conserverles cookies de la session authentifie
+        //ava,t que la reponse de déconnexion les remplace
+        $oldCookies = [];
+        foreach ($client->getCookieJar()->all() as $cookies) {
+            $oldCookies[] = clone $cookies;
+        }
+        $client->submit($form);
+
+        self::assertResponseRedirects('/');
+
+        $client->followRedirect();
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h1', 'Bienvenue');
+
+        //plus acces a accound leclient est déconnecte
+        $client->request('GET', '/account');
+
+        self::assertResponseRedirects('/login');
+
+        //rejouter ensuite les ancienscookies
+        $client->getCookieJar()->clear();
+
+        foreach ($oldCookies as $cookie) {
+            $client->getCookieJar()->set($cookie);
+        }
+        $client->request('GET', self::BASE_URL . '/account');
+
+        self::assertResponseRedirects('/login');
+    }
+
+    private function createAuthenticatedClient(): KernelBrowser
     {
         $client = static::createClient();
-        $user = static::getContainer()
+        $bob = static::getContainer()
             ->get(UserRepository::class)
             ->findOneBy(['email' => 'user@test.fr']);
 
-        $this->assertNotNull($user);
+        self::assertNotNull($bob);
 
-        $client->loginUser($user);
+        $client->loginUser($bob);
 
-        $client->request('GET', '/dashboard');
+        $client->request('GET', self::BASE_URL . '/account');
 
-        $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('h1', 'Dashboard');
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('body', 'user@test.fr');
 
-        $client->request('GET', '/logout');
-        $this->assertResponseRedirects('/');
-
-        $client->followRedirect();
-        $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('h1', 'Bienvenue');
-
-        $client->request('GET', '/dashboard');
-        $this->assertResponseRedirects('/login');
+        return $client;
     }
 }
