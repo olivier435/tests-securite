@@ -38,6 +38,11 @@ class AccountController extends AbstractController
 
             return $this->redirectToRoute('app_account');
         }
+        // if ($form->isSubmitted()) {
+        //     //Le formulaire est invalide: restaurer l'objet utilisateur
+        //     // pour ne pas conserver en session un email non enregistré
+        //     $entityManager->refresh($user);
+        // }
 
         return $this->render('account/edit.html.twig', [
             'accountForm' => $form,
